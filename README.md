@@ -115,11 +115,102 @@ The setup data section shows **100% entropy**, which is expected for LZMA1-compr
 
 **Why they failed:** Inno Setup v6.6.1 uses a newer data format than any available Windows extraction tool supports. The innoextract "checksum mismatch" warning is a false positive caused by the unsupported version, not file corruption or tampering. The checksum algorithm was changed in newer Inno Setup revisions.
 
-**To fully unpack the files, the installer must be run on a Windows system** (silent install with `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=path`) or await an updated extraction tool.
+---
+
+## 6. Dynamic Extraction (Post-Installation)
+
+After the initial static analysis, the installer was run via silent install (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=path`) to extract the actual application files.
+
+### Extraction Results
+
+| Metric | Value |
+|---|---|
+| Total files extracted | 4,547 |
+| Total size | 214.21 MB |
+| Architecture | PyInstaller-bundled Python 3.13 application |
+| Entry point | `calibreweb.exe` (15.95 MB, PyInstaller) |
+| Python runtime | Python 3.13, bundled `python313.dll`, `base_library.zip` |
+
+### Application Structure
+
+```
+Calibre-Web_Extracted/
+├── calibreweb.exe          # PyInstaller bootloader (15.95 MB)
+├── unins000.exe/dat        # Inno Setup uninstaller
+└── _internal/
+    ├── python313.dll        # Python 3.13 runtime
+    ├── base_library.zip     # Python standard library
+    ├── libcrypto-3.dll      # OpenSSL 3.x crypto library
+    ├── libssl-3.dll         # OpenSSL 3.x TLS library
+    ├── cps/                 # Calibre-Web application (source decompiled)
+    │   ├── __init__.pyc     # App factory, config loading
+    │   ├── web.pyc          # Main web routes (179 KB)
+    │   ├── admin.pyc        # Admin interface (130 KB)
+    │   ├── db.pyc           # Database models (66 KB)
+    │   ├── kobo.pyc         # Kobo sync integration (72 KB)
+    │   ├── config_sql.pyc   # Configuration management
+    │   ├── server.pyc       # Web server setup
+    │   ├── updater.pyc      # Update checker → GitHub API
+    │   ├── oauth.pyc        # OAuth authentication
+    │   ├── templates/       # 47 Jinja2 HTML templates
+    │   ├── static/          # CSS, JS, images, fonts
+    │   └── translations/    # 27 language packs
+    ├── Cryptodome/          # PyCryptodome (AES, RSA, etc.)
+    ├── cryptography/        # Cryptography package
+    ├── flask-3.1.2/         # Flask web framework
+    ├── sqlalchemy-2.0.46/   # SQLAlchemy ORM
+    └── ... (30+ Python packages)
+```
+
+### Source Code Analysis
+
+The Python `.pyc` files were successfully extracted from the PyInstaller archive and analyzed for security concerns.
+
+#### External Network Endpoints (All Legitimate)
+
+| Endpoint | Purpose |
+|---|---|
+| `https://api.github.com/repos/janeczku/calibre-web` | Update checker (compares local version to latest release) |
+| `https://storeapi.kobo.com` | Kobo store sync (optional, user-configurable) |
+| `https://cdn.kobo.com/book-images` | Kobo book cover images (optional) |
+| Various book metadata APIs | Goodreads, Amazon, Google Books, WorldCat, Barnes & Noble (user-configurable) |
+
+#### Security Features
+
+- **Password hashing:** Uses `generate_password_hash` / `check_password_hash`
+- **OAuth tokens:** Stored in database, properly scoped
+- **Content Security Policy:** CSP headers set with `'unsafe-eval'` (required for some JS features)
+- **Rate limiting:** Flask-Limiter configured
+- **LDAP support:** Optional LDAP authentication with service account
+- **Configurable password policies:** Min length, number/lowercase requirements
+
+#### No Suspicious Code Found
+
+- No telemetry, analytics, or tracking libraries (no PostHog, Sentry, Google Analytics, etc.)
+- No phone-home functionality beyond the GitHub update checker
+- No obfuscated or encrypted code in the Python source
+- No cryptominers, backdoors, or exploit code
+- All external API calls are for user-facing features (book metadata lookups, Kobo sync, OAuth)
+
+### Third-Party Dependencies
+
+The installer bundles 30+ Python packages via `requirements.txt` and `optional-requirements.txt`, including:
+
+| Package | Version | Purpose |
+|---|---|---|
+| Flask | 3.1.2 | Web framework |
+| SQLAlchemy | 2.0.46 | Database ORM |
+| Tornado | 6.4 | Async web server |
+| Cryptography | 44.0.3 | TLS/crypto |
+| PyCryptodome | — | AES/RSA encryption |
+| LXML | — | XML/HTML parsing |
+| Wand | >=0.4.4 | ImageMagick binding |
+| Python-Magic | >=0.4.27 | File type detection |
+| Flask-Limiter | >=2.3.0 | Rate limiting |
 
 ---
 
-## 6. What is Calibre-Web?
+## 7. What is Calibre-Web?
 
 [Calibre-Web](https://github.com/janeczku/calibre-web) is a **free and open-source web app** that provides a browser-based interface for browsing, reading, and downloading eBooks stored in a Calibre database. Key features:
 
@@ -170,6 +261,8 @@ This installer is a **self-contained Windows distribution** that bundles Calibre
 | innoextract 1.9 | Inno Setup extraction attempt |
 | innounp 0.50 | Inno Setup extraction attempt |
 | 7-Zip 25.01 | Archive format detection |
+| pyinstxtractor | PyInstaller archive extraction |
+| Inno Setup (runtime) | Silent install extraction |
 | GitHub API | Release verification, hash comparison |
 
 ---
